@@ -1,0 +1,5 @@
+web/servlets/ControllerServlet.class
+web/utils/Checker.class
+web/servlets/AreaCheckServlet.class
+web/utils/Validator.class
+web/utils/Result.class
