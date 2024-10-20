@@ -1,170 +1,215 @@
-let points = JSON.parse(localStorage.getItem('points')) || [];
+const submitFieldsBtn = document.getElementById('submit_fields');
+const errorDiv = document.getElementById('error_div');
+const svg = document.getElementById('svg');
+const form = document.getElementById('form');
+const RField = document.getElementById('R_field');
 
-document.querySelectorAll("input[name='y']").forEach(checkbox => {
+let points = [];
+
+const predefinedYValues = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2];
+
+document.querySelectorAll("input[name='y_field']").forEach(checkbox => {
     checkbox.addEventListener('change', function () {
-        document.querySelectorAll("input[name='y']").forEach(cb => {
+        document.querySelectorAll("input[name='y_field']").forEach(cb => {
             if (cb !== this) cb.checked = false;
         });
     });
 });
 
-document.getElementById('pointForm').addEventListener('submit', function (event) {
-    event.preventDefault();
-
-    let x = document.getElementById('x').value.replace(',', '.');
-    const yElements = document.querySelectorAll('input[name="y"]:checked');
-    const r = document.getElementById('r').value;
-
-    if (!/^-?\d+(\.\d+)?$/.test(x) || x < -3 || x > 5) {
-        alert("Please enter a valid X coordinate between -3 and 5.");
-        return;
-    }
-
-    if (yElements.length === 0) {
-        alert("Please select a Y value.");
-        return;
-    }
-
-    const y = Array.from(yElements).map(el => el.value);
-
-    if (y.length !== 1) {
-        alert('Please select exactly one Y coordinate.');
-        return;
-    }
-
-    const data = `x=${encodeURIComponent(x)}&y=${encodeURIComponent(y[0])}&r=${encodeURIComponent(r)}`;
-
-    fetch('web/controller', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: data
-    })
-        .then(response => response.json())
-        .then(result => {
-            points.push({ x: parseFloat(x), y: parseFloat(y[0]), r: parseFloat(r), result: result.result, currentTime: result.currentTime, executionTime: result.executionTime });
-            localStorage.setItem('points', JSON.stringify(points));
-            addPointToTable(x, y[0], r, result.result, result.currentTime, result.executionTime);
-            drawGraph();
-            drawAllPoints();
-        })
-        .catch(error => console.error('Error:', error));
+RField.addEventListener('change', function() {
+    updateGraphLabels();
+    redrawPoints();
 });
 
-function addPointToTable(x, y, r, result, currentTime, executionTime) {
-    const resultBody = document.getElementById('resultBody');
-    const newRow = document.createElement('tr');
-    newRow.innerHTML = `
-        <td>${x}</td>
-        <td>${y}</td>
-        <td>${r}</td>
-        <td>${result !== undefined ? (result ? 'true' : 'false') : 'undefined'}</td>
-        <td>${currentTime !== undefined ? currentTime : 'undefined'}</td>
-        <td>${executionTime !== undefined ? executionTime : 'undefined'}</td>
-    `;
-    resultBody.appendChild(newRow);
-}
+submitFieldsBtn.addEventListener('click', function(e) {
+    e.preventDefault();
+    errorDiv.innerHTML = '';
 
-document.getElementById('canvas').addEventListener('click', function(e) {
-    const rect = this.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-    const r = parseFloat(document.getElementById('r').value);
+    const x = document.querySelector('input[name="x_field"]').value;
+    const y = getYCheckboxValue();
+    const R = RField.value;
 
-    const x = ((clickX - 400) / (100 / r) + 2 * r).toFixed(2);
-    const y = ((200 - clickY) / (100 / r)).toFixed(2);
-
-    const data = `x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&r=${encodeURIComponent(r)}`;
-
-    fetch('web/controller', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: data
-    })
-        .then(response => response.json())
-        .then(result => {
-            points.push({ x: parseFloat(x), y: parseFloat(y), r: parseFloat(r), result: result.result, currentTime: result.currentTime, executionTime: result.executionTime });
-            localStorage.setItem('points', JSON.stringify(points));
-            drawGraph();
-            drawAllPoints();
-        })
-        .catch(error => console.error('Error:', error));
+    if (validateInput(x, y, R)) {
+        plotPoint(x, y, R);
+        sendFormData(x, y, R);
+    }
 });
 
-function drawGraph() {
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const r = parseFloat(document.getElementById('r').value);
+svg.addEventListener('click', function(e) {
+    const coords = getSVGCoordinates(e);
+    const R = RField.value;
+    const x = ((coords.x - 200) * R / 100).toFixed(2);
+    let y = ((200 - coords.y) * R / 100).toFixed(2);
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    y = findNearestYValue(y, predefinedYValues);
 
-    const centerX = 400; // X
-    const centerY = 200; // Y
-    const unit = 100 / r; // Масштаб
+    if (validateInput(x, y, R, true)) {
+        plotPoint(x, y, R);
+        sendFormData(x, y, R);
+    }
+});
 
-    ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
-
-    // Прямоуг
-    ctx.fillRect(centerX, centerY - unit * r, unit * r / 2, unit * r);
-
-    // Сектор
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, unit * r / 2, 0, Math.PI / 2);
-    ctx.lineTo(centerX, centerY);
-    ctx.fill();
-
-    // Треуг
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY);
-    ctx.lineTo(centerX, centerY + unit * r);
-    ctx.lineTo(centerX - unit * r / 2, centerY);
-    ctx.closePath();
-    ctx.fill();
-
-    // Отрисовка осей
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(canvas.width, centerY);
-    ctx.moveTo(centerX, 0);
-    ctx.lineTo(centerX, canvas.height);
-    ctx.stroke();
-
-    // оси
-    ctx.font = '12px Arial';
-    ctx.fillStyle = 'black';
-    ctx.fillText('-R', centerX - unit * r, centerY + 15);
-    ctx.fillText('-R/2', centerX - unit * r / 2, centerY + 15);
-    ctx.fillText('R/2', centerX + unit * r / 2, centerY + 15);
-    ctx.fillText('R', centerX + unit * r, centerY + 15);
-    ctx.fillText('R', centerX + 5, centerY - unit * r);
-    ctx.fillText('R/2', centerX + 5, centerY - unit * r / 2);
-    ctx.fillText('-R/2', centerX + 5, centerY + unit * r / 2);
-    ctx.fillText('-R', centerX + 5, centerY + unit * r);
+function getYCheckboxValue() {
+    const checked = document.querySelector('input[name="y_field"]:checked');
+    return checked ? checked.value : null;
 }
 
-function drawAllPoints() {
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const r = parseFloat(document.getElementById('r').value);
+function validateInput(x, y, R, fromGraph = false) {
+    let valid = true;
+    let messages = [];
 
-    points.forEach(point => {
-        const x = ((point.x - 2 * r) * (100 / r) + 400).toFixed(0);
-        const y = (200 - (100 / r) * point.y).toFixed(0);
+    if (isNaN(x) || x < -3 || x > 5) {
+        messages.push("X must be a number between -3 and 5.");
+        valid = false;
+    }
 
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, 2 * Math.PI);
-        ctx.fillStyle = 'red';
-        ctx.fill();
+    if (isNaN(y) || !predefinedYValues.includes(parseFloat(y))) {
+        messages.push("Y must be one of the predefined values.");
+        valid = false;
+    }
+
+    if (isNaN(R) || R < 1 || R > 5) {
+        messages.push("R must be a number between 1 and 5.");
+        valid = false;
+    }
+
+    if (!fromGraph && y === null) {
+        messages.push("Please select a Y value.");
+        valid = false;
+    }
+
+    if (!valid) {
+        showError(messages.join(' '));
+    }
+
+    return valid;
+}
+
+function showError(message) {
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    setTimeout(() => {
+        errorDiv.style.display = 'none';
+    }, 5000);
+}
+
+function sendFormData(x, y, R) {
+    const url = '/web_server-1.0-SNAPSHOT/controller';
+    const data = `x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}&R=${encodeURIComponent(R)}`;
+
+    fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: data
+    })
+        .then(response => {
+            if (response.ok) {
+                window.location.href = 'result.jsp';
+            } else {
+                showError(`Error: ${response.statusText}`);
+            }
+        })
+        .catch(() => {
+            showError('Network error occurred.');
+        });
+}
+
+function plotPoint(x, y, R) {
+    const svgX = (x * 100 / R) + 200;
+    const svgY = 200 - (y * 100 / R);
+
+    const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    point.setAttribute('cx', svgX);
+    point.setAttribute('cy', svgY);
+    point.setAttribute('r', 3);
+    point.setAttribute('fill', 'red');
+    svg.appendChild(point);
+    points.push({ x, y, R, element: point });
+
+    savePoints();
+}
+
+function updateGraphLabels() {
+    const R = parseFloat(RField.value);
+
+    document.querySelector('[data-dynamic-rx]').textContent = R / 2;
+    document.querySelector('[data-dynamic-rxx]').textContent = R;
+    document.querySelector('[data-dynamic-r-x]').textContent = -R / 2;
+    document.querySelector('[data-dynamic-r-xx]').textContent = -R;
+    document.querySelector('[data-dynamic-r-y]').textContent = R / 2;
+    document.querySelector('[data-dynamic-r-yy]').textContent = R;
+    document.querySelector('[data-dynamic-ry]').textContent = -R / 2;
+    document.querySelector('[data-dynamic-ryy]').textContent = -R;
+}
+
+function redrawPoints() {
+    points.forEach(pointData => {
+        svg.removeChild(pointData.element);
+    });
+    points = [];
+    loadPoints();
+}
+
+function savePoints() {
+    localStorage.setItem('points', JSON.stringify(points));
+}
+
+function loadPoints() {
+    const savedPoints = JSON.parse(localStorage.getItem('points') || '[]');
+    points = [];
+    savedPoints.forEach(pointData => {
+        plotPoint(pointData.x, pointData.y, RField.value); 
     });
 }
 
-window.addEventListener('load', function() {
-    points.forEach(point => {
-        addPointToTable(point.x, point.y, point.r, point.result, point.currentTime, point.executionTime);
-    });
-    drawGraph();
-    drawAllPoints();
+function getSVGCoordinates(event) {
+    const rect = svg.getBoundingClientRect();
+    return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+    };
+}
+
+function findNearestYValue(y, yValues) {
+    y = parseFloat(y);
+    let nearestY = yValues[0];
+    let minDiff = Math.abs(y - yValues[0]);
+    for (let i = 1; i < yValues.length; i++) {
+        let diff = Math.abs(y - yValues[i]);
+        if (diff < minDiff) {
+            minDiff = diff;
+            nearestY = yValues[i];
+        }
+    }
+    return nearestY;
+}
+
+window.addEventListener('load', () => {
+    updateGraphLabels();
+    loadPoints();
+    restoreFormState();
+});
+
+function restoreFormState() {
+    const savedX = localStorage.getItem('x_field');
+    const savedY = localStorage.getItem('y_field');
+    const savedR = localStorage.getItem('R_field');
+
+    if (savedX) {
+        document.querySelector('input[name="x_field"]').value = savedX;
+    }
+    if (savedY) {
+        const yCheckbox = document.querySelector(`input[name="y_field"][value="${savedY}"]`);
+        if (yCheckbox) yCheckbox.checked = true;
+    }
+    if (savedR) {
+        RField.value = savedR;
+    }
+}
+
+window.addEventListener('beforeunload', () => {
+    localStorage.setItem('x_field', document.querySelector('input[name="x_field"]').value);
+    const yChecked = document.querySelector('input[name="y_field"]:checked');
+    localStorage.setItem('y_field', yChecked ? yChecked.value : '');
+    localStorage.setItem('R_field', RField.value);
 });

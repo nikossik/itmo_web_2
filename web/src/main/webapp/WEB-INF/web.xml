@@ -20,6 +20,6 @@
 
     <servlet-mapping>
         <servlet-name>AreaCheckServlet</servlet-name>
-        <url-pattern>/check</url-pattern>
+        <url-pattern>/checkArea</url-pattern>
     </servlet-mapping>
 </web-app>
