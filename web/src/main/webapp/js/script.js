@@ -1,7 +1,6 @@
 const submitFieldsBtn = document.getElementById('submit_fields');
 const errorDiv = document.getElementById('error_div');
 const svg = document.getElementById('svg');
-const form = document.getElementById('form');
 const RField = document.getElementById('R_field');
 
 let points = [];

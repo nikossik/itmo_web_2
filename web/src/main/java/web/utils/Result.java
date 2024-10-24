@@ -1,6 +1,9 @@
 package web.utils;
+import java.beans.JavaBean;
+import java.io.Serializable;
 
-public class Result {
+@JavaBean
+public class Result implements Serializable{
     private String x;
     private String y;
     private String r;
